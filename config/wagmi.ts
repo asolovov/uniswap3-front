@@ -13,7 +13,7 @@ const connectors = connectorsForWallets(
     },
   ],
   {
-    appName: "MSFT",
+    appName: "Swap",
     projectId: WAGMI_CONFIG.PROJECT_ID,
   }
 );
