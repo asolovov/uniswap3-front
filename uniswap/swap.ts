@@ -1,5 +1,14 @@
 import { Token } from "@/models/models"
 
+// export async function recalculateAmount(
+//     payToken: Token,
+//     receiveToken: Token,
+//     payAmount: string,
+//     receiveAmount: string,
+// ): Promise<{ newPayAmount: string, newReceiveAmount: string}> {
+//     return {newPayAmount: payAmount, newReceiveAmount: receiveAmount}
+// }
+
 export async function executeSwap (
     payToken: Token,
     receiveToken: Token,
