@@ -390,33 +390,7 @@ export default function PositionsPage() {
 
     if (showNewPosition) {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50">
-                {/* Navbar */}
-                <nav className="flex items-center justify-between p-4 bg-white/80 backdrop-blur-sm border-b">
-                    <div className="flex items-center gap-6">
-                        <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
-                                <span className="text-white font-bold text-sm">U</span>
-                            </div>
-                            <span className="font-semibold text-lg">Uniswap</span>
-                        </div>
-                        <div className="flex items-center gap-4">
-                            <Button variant="ghost" className="font-medium text-gray-500">
-                                Swap
-                            </Button>
-                            <Button variant="ghost" className="font-medium">
-                                Positions
-                            </Button>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-2">
-                            <div className="w-6 h-6 bg-orange-500 rounded-full"></div>
-                            <span className="font-medium">{walletAddress}</span>
-                        </div>
-                    </div>
-                </nav>
-
+            <>
                 {/* Main Content */}
                 <div className="flex justify-center items-start pt-8 px-4">
                     <Card className="w-full max-w-md bg-white/90 backdrop-blur-sm shadow-xl">
@@ -890,44 +864,12 @@ export default function PositionsPage() {
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>
-            </div>
+            </>
         )
     }
 
     // Main positions page
     return (
-        <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50">
-            {/* Navbar */}
-            <nav className="flex items-center justify-between p-4 bg-white/80 backdrop-blur-sm border-b">
-                <div className="flex items-center gap-6">
-                    <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
-                            <span className="text-white font-bold text-sm">U</span>
-                        </div>
-                        <span className="font-semibold text-lg">Uniswap</span>
-                    </div>
-                    <div className="flex items-center gap-4">
-                        <Button variant="ghost" className="font-medium text-gray-500">
-                            Swap
-                        </Button>
-                        <Button variant="ghost" className="font-medium">
-                            Positions
-                        </Button>
-                    </div>
-                </div>
-                <div className="flex items-center gap-3">
-                    {isWalletConnected ? (
-                        <div className="flex items-center gap-2">
-                            <div className="w-6 h-6 bg-orange-500 rounded-full"></div>
-                            <span className="font-medium">{walletAddress}</span>
-                        </div>
-                    ) : (
-                        <Button>Connect</Button>
-                    )}
-                </div>
-            </nav>
-
-            {/* Main Content */}
             <div className="max-w-4xl mx-auto pt-8 px-4">
                 <div className="flex items-center justify-between mb-8">
                     <h1 className="text-3xl font-bold">Positions</h1>
@@ -1011,6 +953,5 @@ export default function PositionsPage() {
                     </div>
                 )}
             </div>
-        </div>
     )
 }
