@@ -1,6 +1,6 @@
 import React from "react";
-import NavWallet from "@/components/nav-wallet";
-import NavButtons from "@/components/nav-buttons";
+import NavWallet from "@/components/nav/nav-wallet";
+import NavButtons from "@/components/nav/nav-buttons";
 
 export default function Nav() {
     return (
