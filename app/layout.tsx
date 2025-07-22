@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import Nav from "@/components/nav";
 
 export const metadata: Metadata = {
   title: 'v0 App',
@@ -14,7 +15,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50">
+      <Nav/>
+      {children}
+      </body>
     </html>
   )
 }
