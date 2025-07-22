@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/u
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Settings, ChevronDown, ArrowUpDown, AlertTriangle, Info } from "lucide-react"
+import { Settings, ArrowUpDown, AlertTriangle, Info } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -18,20 +18,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {Token} from "@/models/models";
+import {getTokens} from "@/uniswap/tokens";
+import {approveAllowance, checkAllowance, METHOD} from "@/uniswap/allowance";
+import {executeSwap} from "@/uniswap/swap";
 
 // Global constants
-const DEFAULT_CURRENCY = "USD"
 const DEFAULT_SLIPPAGE = 5.5
 const DEFAULT_VALIDITY = 30
 const EXCHANGE_RATE_UPDATE_INTERVAL = 30000 // 30 seconds
-
-// Mock tokens
-const TOKENS = [
-  { symbol: "USDC", name: "USD Coin", icon: "💰" },
-  { symbol: "ETH", name: "Ethereum", icon: "⟠" },
-  { symbol: "BTC", name: "Bitcoin", icon: "₿" },
-  { symbol: "TEST", name: "Test Token", icon: "🧪" },
-]
 
 // Mock exchange rates (in relation to USDC)
 const EXCHANGE_RATES: Record<string, number> = {
@@ -50,13 +45,16 @@ const EXCHANGE_RATES: Record<string, number> = {
 }
 
 export default function SwapPage() {
+  // Tokens state
+  const [tokens, setTokens] = useState<Token[]>([])
+
   // Wallet state
   const [isWalletConnected, setIsWalletConnected] = useState(false)
   const [walletAddress, setWalletAddress] = useState("")
 
   // Swap form state
-  const [payToken, setPayToken] = useState("USDC")
-  const [receiveToken, setReceiveToken] = useState("ETH")
+  const [payToken, setPayToken] = useState(tokens.length > 0 ? tokens[0] : {} as Token)
+  const [receiveToken, setReceiveToken] = useState(tokens.length > 0 ? tokens[1] : {} as Token)
   const [payAmount, setPayAmount] = useState("")
   const [receiveAmount, setReceiveAmount] = useState("")
 
@@ -81,8 +79,8 @@ export default function SwapPage() {
 
   // Update exchange rate
   const updateExchangeRate = useCallback(() => {
-    if (payToken && receiveToken && payToken !== receiveToken) {
-      const rateKey = `${payToken}-${receiveToken}`
+    if (payToken && receiveToken && payToken.address !== receiveToken.address) {
+      const rateKey = `${payToken.symbol}-${receiveToken.symbol}`
       const rate = EXCHANGE_RATES[rateKey]
       if (rate) {
         setExchangeRate(rate)
@@ -90,6 +88,15 @@ export default function SwapPage() {
       }
     }
   }, [payToken, receiveToken])
+
+  // Get tokens
+  useEffect(() => {
+      getTokens().then(t => {
+        setTokens(t)
+        setPayToken(t[0])
+        setReceiveToken(t[1])
+      }).catch(error => console.error("Error fetching tokens:", error))
+  }, []);
 
   // Update receive amount when pay amount or exchange rate changes
   useEffect(() => {
@@ -114,7 +121,7 @@ export default function SwapPage() {
     }
   }, [payToken, receiveToken, updateExchangeRate])
 
-  // Handle wallet connection
+  // TODO: WALLET CONNECT LOGIC
   const handleWalletConnect = () => {
     if (isWalletConnected) {
       setIsWalletConnected(false)
@@ -185,34 +192,6 @@ export default function SwapPage() {
     return null
   }
 
-  // Mock allowance check
-  const checkAllowance = async (token: string, amount: string): Promise<boolean> => {
-    // Mock API call delay
-    await new Promise((resolve) => setTimeout(resolve, 1000))
-
-    // Mock logic: randomly return true/false for demonstration
-    // In real implementation, this would check the actual allowance
-    return Math.random() > 0.5
-  }
-
-  // Mock allowance approval
-  const approveAllowance = async (token: string): Promise<boolean> => {
-    // Mock transaction delay
-    await new Promise((resolve) => setTimeout(resolve, 2000))
-
-    // Mock success (in real implementation, this could fail)
-    return true
-  }
-
-  // Mock swap execution
-  const executeSwap = async (): Promise<boolean> => {
-    // Mock transaction delay
-    await new Promise((resolve) => setTimeout(resolve, 2000))
-
-    // Mock success
-    return true
-  }
-
   // Handle swap button click
   const handleSwap = async () => {
     if (!isWalletConnected) {
@@ -250,7 +229,7 @@ export default function SwapPage() {
     try {
       setIsApprovingAllowance(true)
 
-      const success = await approveAllowance(payToken)
+      const success = await approveAllowance(payToken, METHOD.SWAP, payAmount)
 
       if (success) {
         setShowAllowanceDialog(false)
@@ -269,7 +248,7 @@ export default function SwapPage() {
     try {
       setIsSwapping(true)
 
-      const success = await executeSwap()
+      const success = await executeSwap(payToken, receiveToken, payAmount, slippage, validity)
 
       if (success) {
         // Reset form on successful swap
@@ -282,6 +261,14 @@ export default function SwapPage() {
     } finally {
       setIsSwapping(false)
     }
+  }
+
+  const handleSetPToken = (t: string) => {
+      setPayToken(tokens.find(token => token.symbol === t) || tokens[0])
+  }
+
+  const handleSetRToken = (t: string) => {
+      setReceiveToken(tokens.find(token => token.symbol === t) || tokens[0])
   }
 
   const slippageWarning = getSlippageWarning()
@@ -378,26 +365,20 @@ export default function SwapPage() {
                         placeholder="0"
                         value={payAmount}
                         onChange={(e) => setPayAmount(e.target.value)}
-                        className="flex-1 border-0 bg-transparent text-2xl font-semibold p-0 h-auto"
+                        className="flex-1 border-0 bg-transparent font-semibold p-0 h-auto md:text-2xl"
                         step="any"
                     />
-                    <Select value={payToken} onValueChange={setPayToken}>
+                    <Select value={payToken.symbol} onValueChange={handleSetPToken}>
                       <SelectTrigger className="w-auto border-0 bg-white rounded-full px-3 py-2">
                         <div className="flex items-center gap-2">
-                          <span className="text-lg">{TOKENS.find((t) => t.symbol === payToken)?.icon}</span>
-                          <span className="font-medium">{payToken}</span>
-                          <ChevronDown className="w-4 h-4" />
+                          <span className="text-lg">{payToken.symbol}</span>
                         </div>
                       </SelectTrigger>
                       <SelectContent>
-                        {TOKENS.map((token) => (
+                        {tokens.map((token) => (
                             <SelectItem key={token.symbol} value={token.symbol}>
                               <div className="flex items-center gap-2">
-                                <span>{token.icon}</span>
-                                <div>
-                                  <div className="font-medium">{token.symbol}</div>
-                                  <div className="text-sm text-gray-500">{token.name}</div>
-                                </div>
+                                <span>{token.symbol}</span>
                               </div>
                             </SelectItem>
                         ))}
@@ -406,7 +387,7 @@ export default function SwapPage() {
                   </div>
                   {payAmount && (
                       <div className="text-sm text-gray-500 mt-2">
-                        {payAmount} {payToken}
+                        {payAmount} {payToken.symbol}
                       </div>
                   )}
                 </div>
@@ -428,23 +409,17 @@ export default function SwapPage() {
                   <Label className="text-sm text-gray-600 mb-2 block">You receive</Label>
                   <div className="flex items-center gap-3">
                     <div className="flex-1 text-2xl font-semibold text-gray-900">{receiveAmount || "0"}</div>
-                    <Select value={receiveToken} onValueChange={setReceiveToken}>
+                    <Select value={receiveToken.symbol} onValueChange={handleSetRToken}>
                       <SelectTrigger className="w-auto border-0 bg-white rounded-full px-3 py-2">
                         <div className="flex items-center gap-2">
-                          <span className="text-lg">{TOKENS.find((t) => t.symbol === receiveToken)?.icon}</span>
-                          <span className="font-medium">{receiveToken}</span>
-                          <ChevronDown className="w-4 h-4" />
+                          <span className="text-lg">{receiveToken.symbol}</span>
                         </div>
                       </SelectTrigger>
                       <SelectContent>
-                        {TOKENS.map((token) => (
+                        {tokens.map((token) => (
                             <SelectItem key={token.symbol} value={token.symbol}>
                               <div className="flex items-center gap-2">
-                                <span>{token.icon}</span>
-                                <div>
-                                  <div className="font-medium">{token.symbol}</div>
-                                  <div className="text-sm text-gray-500">{token.name}</div>
-                                </div>
+                                <span>{token.symbol}</span>
                               </div>
                             </SelectItem>
                         ))}
@@ -453,7 +428,7 @@ export default function SwapPage() {
                   </div>
                   {receiveAmount && (
                       <div className="text-sm text-gray-500 mt-2">
-                        {receiveAmount} {receiveToken} (-0.010%)
+                        {receiveAmount} {receiveToken.symbol} (-0.010%)
                       </div>
                   )}
                 </div>
@@ -463,7 +438,7 @@ export default function SwapPage() {
                     <div className="text-sm text-gray-600 space-y-1">
                       <div className="flex justify-between">
                     <span>
-                      1 {payToken} = {exchangeRate} {receiveToken}
+                      1 {payToken.symbol} = {exchangeRate} {receiveToken.symbol}
                     </span>
                         {lastUpdated && (
                             <span className="text-xs text-gray-400">
@@ -525,7 +500,7 @@ export default function SwapPage() {
                   Allowance Required
                 </DialogTitle>
                 <DialogDescription className="text-left">
-                  You need to give permission for the Uniswap protocol to spend your {payToken} tokens. This is a one-time
+                  You need to give permission for the Uniswap protocol to spend your {payToken.symbol} tokens. This is a one-time
                   transaction that allows the protocol to access your tokens for trading.
                 </DialogDescription>
               </DialogHeader>
@@ -534,14 +509,13 @@ export default function SwapPage() {
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-gray-600">Token to approve:</span>
                     <div className="flex items-center gap-2">
-                      <span className="text-lg">{TOKENS.find((t) => t.symbol === payToken)?.icon}</span>
-                      <span className="font-medium">{payToken}</span>
+                      <span className="text-lg">{payToken.symbol}</span>
                     </div>
                   </div>
                   <div className="flex items-center justify-between text-sm mt-2">
                     <span className="text-gray-600">Amount:</span>
                     <span className="font-medium">
-                    {payAmount} {payToken}
+                    {payAmount} {payToken.symbol}
                   </span>
                   </div>
                 </div>
