@@ -1,5 +1,5 @@
 "use client";
-import { useAccountModal, WalletButton } from "@rainbow-me/rainbowkit";
+import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useAccount } from "wagmi";
 import { Button } from "@/components/ui/button";
 import React from "react";
@@ -10,22 +10,21 @@ const formatWalletAddress = (address?: string) => {
 };
 
 export default function NavWallet() {
-  const { openAccountModal } = useAccountModal();
   const { address, isConnected } = useAccount();
 
   return (
     <div className="flex items-center gap-3">
-      <WalletButton.Custom wallet="metamask">
-        {({ connect }) => {
+      <ConnectButton.Custom>
+        {({ openAccountModal, openConnectModal }) => {
           return isConnected ? (
             <Button onClick={openAccountModal}>
               {formatWalletAddress(address)}
             </Button>
           ) : (
-            <Button onClick={connect}>{"Connect Wallet"}</Button>
+            <Button onClick={openConnectModal}>{"Connect Wallet"}</Button>
           );
         }}
-      </WalletButton.Custom>
+      </ConnectButton.Custom>
     </div>
   );
 }
