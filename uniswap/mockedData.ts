@@ -6,9 +6,9 @@ export const TOKENS_MOCKED = [
   {
     symbol: "USDC",
     name: "USD Coin",
-    address: "0x8346d72233072a255c13fe3f16adb8b7055d5eaf",
+    address: "0xDF4BDAC4Ba259127D1c53C07cdd005AD54CCAfb0",
     decimals: 6,
-    nativePrice: 0.00027,
+    nativePrice: 10,
   },
   {
     symbol: "ETH",
@@ -18,11 +18,11 @@ export const TOKENS_MOCKED = [
     nativePrice: 1,
   },
   {
-    symbol: "BTC",
-    name: "Bitcoin",
-    address: "0xdf4bdac4ba259127d1c53c07cdd005ad54ccafb0",
-    decimals: 8,
-    nativePrice: 32.3,
+    symbol: "TEST",
+    name: "Test Token",
+    address: "0x8346D72233072a255c13fE3f16adB8b7055D5EAf",
+    decimals: 18,
+    nativePrice: 10,
   },
 ];
 
