@@ -1,6 +1,6 @@
-import {Token} from "@/models/models";
+import {UserToken} from "@/models/models";
 
-export async function checkAllowance (token: Token, amount: string): Promise<boolean> {
+export async function checkAllowance (token: UserToken, amount: string): Promise<boolean> {
     // Mock API call delay
     await new Promise((resolve) => setTimeout(resolve, 1000))
 
@@ -14,7 +14,7 @@ export enum METHOD {
     POSITION = "position",
 }
 
-export async function approveAllowance (token: Token, method: METHOD, amount: string): Promise<boolean> {
+export async function approveAllowance (token: UserToken, method: METHOD, amount: string): Promise<boolean> {
     // Mock transaction delay
     await new Promise((resolve) => setTimeout(resolve, 2000))
 
