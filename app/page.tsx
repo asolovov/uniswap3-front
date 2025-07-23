@@ -33,12 +33,13 @@ import { approveAllowance, checkAllowance, METHOD } from "@/uniswap/allowance";
 import { executeSwap } from "@/uniswap/swap";
 import { useExchangeRate } from "@/components/updates";
 import LastUpdated from "@/components/lastUpdated";
-import { useAccount } from "wagmi";
+import { useAccount, useWalletClient } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
+import { useEthersSigner } from "@/packages/uniswap/contracts/signer";
 
 // Global constants
 const DEFAULT_SLIPPAGE = 5.5;
-const DEFAULT_VALIDITY = 30;
+const DEFAULT_VALIDITY = 30; // 30 minutes
 const EXCHANGE_RATE_UPDATE_INTERVAL = 30000; // 30 seconds
 
 export default function SwapPage() {
@@ -48,6 +49,7 @@ export default function SwapPage() {
   // Wallet state
   const { address, isConnected } = useAccount();
   const { openConnectModal } = useConnectModal();
+  const signer = useEthersSigner();
 
   // Swap form state
   const [payToken, setPayToken] = useState(
@@ -182,7 +184,7 @@ export default function SwapPage() {
       return;
     }
 
-    if (!payAmount || !receiveAmount) {
+    if (!payAmount || !receiveAmount || !address) {
       return;
     }
 
@@ -190,7 +192,12 @@ export default function SwapPage() {
       setIsCheckingAllowance(true);
 
       // Check if allowance is sufficient
-      const hasAllowance = await checkAllowance(payToken, payAmount);
+      const hasAllowance = await checkAllowance(
+        payToken,
+        payAmount,
+        address,
+        METHOD.SWAP
+      );
 
       setIsCheckingAllowance(false);
 
@@ -209,10 +216,20 @@ export default function SwapPage() {
 
   // Handle allowance approval
   const handleApproveAllowance = async () => {
+    if (!signer) {
+      console.error("Signer is not available");
+      return;
+    }
+
     try {
       setIsApprovingAllowance(true);
 
-      const success = await approveAllowance(payToken, METHOD.SWAP, payAmount);
+      const success = await approveAllowance(
+        payToken,
+        payAmount,
+        signer,
+        METHOD.SWAP
+      );
 
       if (success) {
         setShowAllowanceDialog(false);
@@ -228,6 +245,10 @@ export default function SwapPage() {
 
   // Perform the actual swap
   const performSwap = async () => {
+    if (!signer) {
+      console.error("Signer is not available");
+      return;
+    }
     try {
       setIsSwapping(true);
 
@@ -236,7 +257,8 @@ export default function SwapPage() {
         receiveToken,
         payAmount,
         slippage,
-        validity
+        validity,
+        signer
       );
 
       if (success) {
