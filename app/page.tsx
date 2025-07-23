@@ -18,7 +18,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog"
-import {Token} from "@/models/models";
+import {UserToken} from "@/models/models";
 import {getTokens} from "@/uniswap/tokens";
 import {approveAllowance, checkAllowance, METHOD} from "@/uniswap/allowance";
 import {executeSwap} from "@/uniswap/swap";
@@ -32,15 +32,15 @@ const EXCHANGE_RATE_UPDATE_INTERVAL = 30000 // 30 seconds
 
 export default function SwapPage() {
     // Tokens state
-    const [tokens, setTokens] = useState<Token[]>([])
+    const [tokens, setTokens] = useState<UserToken[]>([])
 
     // Wallet state
     const [isWalletConnected, setIsWalletConnected] = useState(false)
     const [walletAddress, setWalletAddress] = useState("")
 
     // Swap form state
-    const [payToken, setPayToken] = useState(tokens.length > 0 ? tokens[0] : {} as Token)
-    const [receiveToken, setReceiveToken] = useState(tokens.length > 0 ? tokens[1] : {} as Token)
+    const [payToken, setPayToken] = useState(tokens.length > 0 ? tokens[0] : {} as UserToken)
+    const [receiveToken, setReceiveToken] = useState(tokens.length > 0 ? tokens[1] : {} as UserToken)
     const [payAmount, setPayAmount] = useState("")
     const [receiveAmount, setReceiveAmount] = useState("")
 
