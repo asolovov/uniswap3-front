@@ -1,14 +1,19 @@
-import { FEE_TIER, POSITION_STATUS, UserPosition } from "@/models/models";
+import {
+  FEE_TIER,
+  POSITION_STATUS,
+  UserPosition,
+  UserToken,
+} from "@/models/models";
 import { Token } from "@uniswap/sdk-core";
 import { Pool } from "@uniswap/v3-sdk";
 
-export const TOKENS_MOCKED = [
+export const TOKENS_MOCKED: UserToken[] = [
   {
     symbol: "USDC",
     name: "USD Coin",
     address: "0xDF4BDAC4Ba259127D1c53C07cdd005AD54CCAfb0",
     decimals: 6,
-    nativePrice: 10,
+    nativePrice: 0,
   },
   {
     symbol: "ETH",
@@ -18,11 +23,18 @@ export const TOKENS_MOCKED = [
     nativePrice: 1,
   },
   {
+    symbol: "WZERO",
+    name: "Wrapped Zero",
+    address: "0x08a19ce4b93e957add175f61e022b81894e66720",
+    decimals: 18,
+    nativePrice: 1,
+  },
+  {
     symbol: "TEST",
     name: "Test Token",
     address: "0x8346D72233072a255c13fE3f16adB8b7055D5EAf",
     decimals: 18,
-    nativePrice: 10,
+    nativePrice: 0,
   },
 ];
 
