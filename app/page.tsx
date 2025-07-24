@@ -57,6 +57,9 @@ export default function SwapPage() {
   const [showErrorDialog, setShowErrorDialog] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
+  // Swap conformation
+  const [showSwapConfirmation, setShowSwapConfirmation] = useState(false);
+
   // Swap form state
   const [payToken, setPayToken] = useState(
     tokens.length > 0 ? tokens[0] : ({} as UserToken)
@@ -220,12 +223,13 @@ export default function SwapPage() {
         // Show allowance dialog
         setShowAllowanceDialog(true);
       } else {
-        // Proceed with swap
-        await performSwap();
+        setShowSwapConfirmation(true);
       }
     } catch (error) {
       console.error("Error checking allowance:", error);
       setIsCheckingAllowance(false);
+      setErrorMessage(`Error checking allowance. Please try again.`);
+      setShowErrorDialog(true);
     }
   };
 
@@ -249,9 +253,7 @@ export default function SwapPage() {
       );
 
       if (success) {
-        setShowAllowanceDialog(false);
-        // After approval, proceed with swap
-        await performSwap();
+        setShowSwapConfirmation(true);
       }
     } catch (error) {
       console.error("Error approving allowance:", error);
@@ -286,6 +288,8 @@ export default function SwapPage() {
       if (success) {
         setPayAmount("");
         setReceiveAmount("");
+        setTxReceipt(success);
+        setShowSwapSuccess(true);
       }
     } catch (error) {
       console.error("Error executing swap:", error);
@@ -297,6 +301,7 @@ export default function SwapPage() {
       setShowErrorDialog(true);
     } finally {
       setIsSwapping(false);
+      setShowSwapConfirmation(false);
     }
   };
 
@@ -578,6 +583,57 @@ export default function SwapPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Swap Confirmation Dialog */}
+      <Dialog open={showSwapConfirmation} onOpenChange={setShowSwapConfirmation}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Confirm Swap</DialogTitle>
+            <DialogDescription>Review your swap details before proceeding.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-gray-600">You pay:</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium">{payAmount}</span>
+                  <span className="text-lg">{payToken.symbol}</span>
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-gray-600">You receive:</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium">{receiveAmount}</span>
+                  <span className="text-lg">{receiveToken.symbol}</span>
+                </div>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-600">Max slippage:</span>
+                <span className="font-medium">{slippageMode === "auto" ? DEFAULT_SLIPPAGE : slippage}%</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-600">Network cost:</span>
+                <span className="font-medium">~0.10 USDC</span>
+              </div>
+            </div>
+            <div className="text-xs text-gray-500 text-center">
+              Output is estimated.
+            </div>
+          </div>
+          <DialogFooter className="flex gap-2">
+            <Button variant="outline" onClick={() => setShowSwapConfirmation(false)} disabled={isSwapping}>
+              Cancel
+            </Button>
+            <Button
+                onClick={performSwap}
+                disabled={isSwapping}
+                className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+            >
+              {isSwapping ? "Swapping..." : "Confirm Swap"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Swap success */}
       <Dialog open={showSwapSuccess} onOpenChange={setShowSwapSuccess}>
