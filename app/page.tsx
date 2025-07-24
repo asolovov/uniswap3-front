@@ -30,12 +30,13 @@ import {
 import { UserToken } from "@/models/models";
 import { getTokens } from "@/uniswap/tokens";
 import { approveAllowance, checkAllowance, METHOD } from "@/uniswap/allowance";
-import { executeSwap } from "@/uniswap/swap";
+import {executeSwap, NoReceiptError, TxData} from "@/uniswap/swap";
 import { useExchangeRate } from "@/components/updates";
 import LastUpdated from "@/components/lastUpdated";
-import { useAccount, useWalletClient } from "wagmi";
+import { useAccount } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { useEthersSigner } from "@/packages/uniswap/contracts/signer";
+import {CHAIN_CONFIG} from "@/config/app";
 
 // Global constants
 const DEFAULT_SLIPPAGE = 5.5;
@@ -45,11 +46,16 @@ const EXCHANGE_RATE_UPDATE_INTERVAL = 30000; // 30 seconds
 export default function SwapPage() {
   // Tokens state
   const [tokens, setTokens] = useState<UserToken[]>([]);
+  const [usdcNativePrice, setUsdcNativePrice] = useState(0);
 
   // Wallet state
   const { address, isConnected } = useAccount();
   const { openConnectModal } = useConnectModal();
   const signer = useEthersSigner();
+
+  //Error dialog
+  const [showErrorDialog, setShowErrorDialog] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
   // Swap form state
   const [payToken, setPayToken] = useState(
@@ -79,13 +85,22 @@ export default function SwapPage() {
   const [isApprovingAllowance, setIsApprovingAllowance] = useState(false);
   const [isSwapping, setIsSwapping] = useState(false);
 
+  // Swap success and errors
+  const [showSwapSuccess, setShowSwapSuccess] = useState(false);
+  const [txReceipt, setTxReceipt] = useState<TxData | null>(null);
+
   const getTokensSync = () => {
     getTokens()
       .then((t) => {
         setTokens(t);
-        if (payToken.address === "") setPayToken(t[0]);
-        if (receiveToken.address === "") setReceiveToken(t[1]);
+        // if (!payToken.address) setPayToken(t[0]);
+        // if (!receiveToken.address) setReceiveToken(t[1]);
         setLastUpdated(new Date());
+        for (const token of t) {
+          if (token.symbol === "USDC") {
+            setUsdcNativePrice(token.nativePrice);
+          }
+        }
       })
       .catch((error) => console.error("Error fetching tokens:", error));
   };
@@ -218,6 +233,8 @@ export default function SwapPage() {
   const handleApproveAllowance = async () => {
     if (!signer) {
       console.error("Signer is not available");
+      setErrorMessage("Wallet connection error. Please reconnect and try again.");
+      setShowErrorDialog(true);
       return;
     }
 
@@ -238,8 +255,11 @@ export default function SwapPage() {
       }
     } catch (error) {
       console.error("Error approving allowance:", error);
+      setErrorMessage(`Error approving allowance. Please try again.`);
+      setShowErrorDialog(true);
     } finally {
       setIsApprovingAllowance(false);
+      setShowAllowanceDialog(false);
     }
   };
 
@@ -247,6 +267,8 @@ export default function SwapPage() {
   const performSwap = async () => {
     if (!signer) {
       console.error("Signer is not available");
+      setErrorMessage("Wallet connection error. Please reconnect and try again.");
+      setShowErrorDialog(true);
       return;
     }
     try {
@@ -262,13 +284,17 @@ export default function SwapPage() {
       );
 
       if (success) {
-        // Reset form on successful swap
         setPayAmount("");
         setReceiveAmount("");
-        // You could show a success message here
       }
     } catch (error) {
       console.error("Error executing swap:", error);
+      if (error === NoReceiptError) {
+        setErrorMessage(`Error executing swap - receipt not found. Please check the transaction in the Blockscout.`);
+      } else {
+        setErrorMessage(`Error executing swap. Please try again.`);
+      }
+      setShowErrorDialog(true);
     } finally {
       setIsSwapping(false);
     }
@@ -281,6 +307,15 @@ export default function SwapPage() {
   const handleSetRToken = (t: string) => {
     setReceiveToken(tokens.find((token) => token.symbol === t) || tokens[0]);
   };
+
+  const getUSDCPayAmount = (amount: string, token: UserToken) => {
+    if (token.symbol === "USDC") {
+      return amount;
+    }
+
+    const rate = token.nativePrice / usdcNativePrice
+    return (Number.parseFloat(amount) * rate).toString();
+  }
 
   const slippageWarning = getSlippageWarning();
   const validityWarning = getValidityWarning();
@@ -331,6 +366,7 @@ export default function SwapPage() {
                           min="0"
                           max="100"
                           step="0.1"
+                          lang={"en-EN"}
                         />
                         <span className="text-sm text-gray-500">%</span>
                       </div>
@@ -366,6 +402,7 @@ export default function SwapPage() {
                         onChange={(e) => handleValidityChange(e.target.value)}
                         className="flex-1"
                         min="1"
+                        lang={"en"}
                       />
                       <span className="text-sm text-gray-500">minutes</span>
                     </div>
@@ -392,12 +429,14 @@ export default function SwapPage() {
               <div className="flex items-center gap-3">
                 <Input
                   type="number"
+                  lang={"en"}
                   placeholder="0"
                   min="0"
                   value={payAmount}
                   onChange={(e) => handleSetPayAmount(e.target.value)}
                   className="flex-1 border-0 bg-transparent font-semibold p-0 h-auto md:text-2xl"
                   step="any"
+                  disabled={!payToken.address || !receiveToken.address}
                 />
                 <Select value={payToken.symbol} onValueChange={handleSetPToken}>
                   <SelectTrigger className="w-auto border-0 bg-white rounded-full px-3 py-2">
@@ -418,7 +457,7 @@ export default function SwapPage() {
               </div>
               {payAmount && (
                 <div className="text-sm text-gray-500 mt-2">
-                  {payAmount} {payToken.symbol}
+                  {getUSDCPayAmount(payAmount, payToken)} USDC
                 </div>
               )}
             </div>
@@ -466,19 +505,19 @@ export default function SwapPage() {
               </div>
               {receiveAmount && (
                 <div className="text-sm text-gray-500 mt-2">
-                  {receiveAmount} {receiveToken.symbol}
+                  {getUSDCPayAmount(receiveAmount, receiveToken)} USDC
                 </div>
               )}
             </div>
 
             {/* Exchange Rate Info */}
-            {payToken.address !== receiveToken.address && (
+            {payToken.address && receiveToken.address && payToken.address !== receiveToken.address && (
               <div className="text-sm text-gray-600 space-y-1">
                 <div className="flex justify-between">
                   <span>
-                    1 {payToken.symbol} ={" "}
-                    {payToken.nativePrice / receiveToken.nativePrice}{" "}
-                    {receiveToken.symbol}
+                    1 {receiveToken.symbol} ={" "}
+                    {receiveToken.nativePrice / payToken.nativePrice}{" "}
+                    {payToken.symbol}
                   </span>
                   {lastUpdated && <LastUpdated lastUpdated={lastUpdated} />}
                 </div>
@@ -539,6 +578,84 @@ export default function SwapPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Swap success */}
+      <Dialog open={showSwapSuccess} onOpenChange={setShowSwapSuccess}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              Swap Successful
+            </DialogTitle>
+            <DialogDescription>Your swap has been completed successfully.</DialogDescription>
+          </DialogHeader>
+          {txReceipt && (
+              <div className="space-y-4">
+                <div className="bg-green-50 rounded-lg p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-green-800">Swapped:</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{txReceipt.payed}</span>
+                      <span className="text-lg">{payToken.symbol}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-green-800">Received:</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{txReceipt.received}</span>
+                      <span className="text-lg">{receiveToken.symbol}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-green-700">Fee chain:</span>
+                    <span className="font-medium">{txReceipt.feeChain}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-green-700">Fee swap:</span>
+                    <span className="font-medium">{txReceipt.feeSwap}</span>
+                  </div>
+                </div>
+
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <div className="text-sm font-medium mb-2">Transaction Hash:</div>
+                  <div className="text-xs font-mono bg-white p-2 rounded border break-all">{txReceipt.txHash}</div>
+                </div>
+
+                <Button
+                    variant="outline"
+                    className="w-full bg-transparent"
+                    onClick={() => window.open(`${CHAIN_CONFIG.BLOCKSCOUT_URL}/tx/${txReceipt?.txHash}`, "_blank")}
+                >
+                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                    />
+                  </svg>
+                  View on Blockscout
+                </Button>
+              </div>
+          )}
+          <DialogFooter>
+            <Button
+                onClick={() => {
+                  setShowSwapSuccess(false)
+                  setTxReceipt(null)
+                }}
+                className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Allowance Dialog */}
       <Dialog open={showAllowanceDialog} onOpenChange={setShowAllowanceDialog}>
         <DialogContent className="sm:max-w-md">
@@ -587,6 +704,37 @@ export default function SwapPage() {
               className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
             >
               {isApprovingAllowance ? "Approving..." : "Approve & Swap"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Error Dialog */}
+      <Dialog open={showErrorDialog} onOpenChange={setShowErrorDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
+                <AlertTriangle className="w-5 h-5 text-red-600" />
+              </div>
+              Transaction Failed
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="bg-red-50 rounded-lg p-4">
+              <div className="text-sm text-red-800">{errorMessage}</div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+                onClick={() => {
+                  setShowErrorDialog(false)
+                  setErrorMessage("")
+                }}
+                className="w-full"
+                variant="outline"
+            >
+              Try Again
             </Button>
           </DialogFooter>
         </DialogContent>

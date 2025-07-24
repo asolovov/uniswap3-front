@@ -2,6 +2,17 @@ import { UserToken } from "@/models/models";
 import { getRouterContract } from "@/packages/uniswap/contracts/router";
 import { ethers } from "ethers";
 
+export interface TxData {
+  txHash: string;
+  feeChain: string;
+
+  feeSwap: string;
+  payed: string;
+  received: string;
+}
+
+export const NoReceiptError = new Error("Receipt not found");
+
 export async function executeSwap(
   payToken: UserToken,
   receiveToken: UserToken,
@@ -9,7 +20,7 @@ export async function executeSwap(
   slippage: number,
   validity: number,
   signer: ethers.AbstractSigner
-): Promise<boolean> {
+): Promise<TxData> {
   const contract = getRouterContract();
   const timeNow = Math.floor(Date.now() / 1000);
   const swapParams = {
@@ -23,6 +34,13 @@ export async function executeSwap(
     deadline: timeNow + validity * 60,
   };
   const tx = await contract.connect(signer).exactInputSingle(swapParams);
-  await tx.wait();
-  return true;
+  const r = await tx.wait();
+  if (!r) {
+    throw NoReceiptError;
+  }
+
+  return {
+    txHash: r.hash,
+    feeChain: ethers.formatEther(r.fee),
+  } as TxData;
 }
