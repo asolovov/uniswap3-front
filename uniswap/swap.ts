@@ -3,13 +3,15 @@ import {
   getPoolContract,
   getPoolContractInstance,
 } from "@/packages/uniswap/contracts/pool";
-import { getRouterContract } from "@/packages/uniswap/contracts/router";
 import { computePoolAddress, FEE_TIERS } from "@/packages/uniswap/pool/address";
 import {
   calculateSqrtPriceLimit,
   isZeroForOne,
 } from "@/packages/uniswap/utils/slippage";
-import { ethers } from "ethers";
+import { ethers, ZeroAddress } from "ethers";
+import { getBestQuotedRoute, getSwapData } from "./routing/route";
+import { SwapType } from "./routing/types";
+import { UniswapV3Contracts } from "./routing/config";
 
 export interface TxData {
   txHash: string;
@@ -21,8 +23,6 @@ export interface TxData {
 }
 
 export const NoReceiptError = new Error("Receipt not found");
-
-const X96BIG = BigInt(1) << BigInt(96);
 
 /**
  * Get current pool price and calculate slippage-adjusted sqrt price limit
@@ -60,45 +60,34 @@ export async function executeSwap(
   validity: number,
   signer: ethers.AbstractSigner
 ): Promise<TxData> {
-  console.log("Slippage:", slippage);
-  const fee = await getBestFee(payToken.address, receiveToken.address);
-
-  // Calculate sqrt price limit based on slippage
-  const sqrtPriceLimitX96 = await getSqrtPriceLimitWithSlippage(
-    payToken.address,
-    receiveToken.address,
-    fee,
-    slippage
-  );
-
-  // TODO: Calculate amountOutMinimum based on expected output and slippage
-  const amountOutMinimum = 0;
-
-  const contract = getRouterContract();
-  const timeNow = Math.floor(Date.now() / 1000);
-  const swapParams = {
+  const { callData } = await getSwapData({
+    signer: await signer.getAddress(),
     tokenIn: payToken.address,
     tokenOut: receiveToken.address,
-    fee,
-    amountIn: ethers.parseUnits(payAmount, payToken.decimals),
-    sqrtPriceLimitX96,
-    amountOutMinimum,
-    recipient: await signer.getAddress(),
-    deadline: timeNow + validity * 60,
+    amount: ethers.parseUnits(payAmount, payToken.decimals),
+    swapType: SwapType.EXACT_INPUT,
+  });
+
+  const tx: ethers.TransactionRequest = {
+    from: await signer.getAddress(),
+    to: UniswapV3Contracts.routerAddress,
+    data: callData,
   };
 
-  const tx = await contract.connect(signer).exactInputSingle(swapParams);
-  const r = await tx.wait();
-  if (!r) {
+  const receipt = await signer.sendTransaction(tx).then((tx) => tx.wait());
+  if (!receipt) {
     throw NoReceiptError;
   }
 
-  const { amountIn, amountOut } = parseSwapEvent(r);
+  const { amountIn, amountOut } = parseSwapEvent(
+    receipt,
+    await signer.getAddress()
+  );
 
   const swapResult: TxData = {
-    txHash: r.hash,
-    feeChain: ethers.formatEther(r.gasUsed * r.gasPrice),
-    feeSwap: getFeeInTokens(payAmount, fee, payToken),
+    txHash: receipt.hash,
+    feeChain: ethers.formatEther(receipt.gasUsed * receipt.gasPrice),
+    feeSwap: "0",
     payed: ethers.formatUnits(amountIn, payToken.decimals),
     received: ethers.formatUnits(amountOut, receiveToken.decimals),
   };
@@ -112,88 +101,58 @@ function getFeeInTokens(amount: string, fee: number, token: UserToken): string {
   return ethers.formatUnits(feeAmount, token.decimals);
 }
 
-function parseSwapEvent(receipt: ethers.TransactionReceipt) {
-  const contract = getPoolContractInstance();
+function parseSwapEvent(
+  receipt: ethers.TransactionReceipt,
+  signer: string
+): { amountIn: bigint; amountOut: bigint } {
+  const iface = new ethers.Interface([
+    "event Transfer(address indexed from, address indexed to, uint256 value)",
+  ]);
 
-  const event = contract.interface.getEvent("Swap");
+  const event = iface.getEvent("Transfer");
   if (!event) {
-    throw new Error("Swap event not found in contract interface");
+    throw new Error("Transfer event not found in contract interface");
   }
 
-  const log = receipt.logs?.find((l) => l.topics[0] === event!.topicHash);
-
-  if (!log) {
-    throw new Error("Swap event not found in transaction logs");
+  const logs = receipt.logs?.filter((l) => l.topics[0] === event!.topicHash);
+  if (!logs || logs.length === 0) {
+    throw new Error("Transfer event not found in transaction logs");
   }
-  const args = contract.interface.parseLog(log)?.args;
-  if (!args) {
-    throw new Error("Failed to parse Swap event arguments");
-  }
+  let amountIn = BigInt(0);
+  let amountOut = BigInt(0);
 
-  const amount0 = BigInt(args.amount0);
-  const amount1 = BigInt(args.amount1);
-
-  // In - Out == Payed - Received
-  if (amount0 > BigInt(0)) {
-    return {
-      amountIn: -amount1,
-      amountOut: amount0,
-    };
-  } else {
-    return {
-      amountIn: amount1,
-      amountOut: -amount0,
-    };
-  }
-}
-
-async function getBestFee(tokenA: string, tokenB: string): Promise<number> {
-  for (const fee of Object.values(FEE_TIERS)) {
-    const poolAddress = computePoolAddress(tokenA, tokenB, fee);
-    const poolContract = getPoolContract(poolAddress);
-    try {
-      const liquidity = await poolContract.liquidity();
-      if (liquidity > 0) {
-        return fee;
-      }
-    } catch {
+  for (const log of logs) {
+    if (!log.data || log.data === "0x") {
       continue;
     }
+    const args = iface.parseLog(log)?.args;
+    if (!args) {
+      throw new Error("Failed to parse Transfer event arguments");
+    }
+    if (args.from === signer) {
+      amountIn = args.value;
+    }
+    if (args.to === signer) {
+      amountOut = args.value;
+    }
   }
-  throw new Error("No valid pool found for the token pair");
+  return { amountIn, amountOut };
 }
 
-export async function getPoolPrice(
+export async function getQuotedPrice(
   tokenIn: UserToken,
   tokenOut: UserToken
 ): Promise<number> {
-  for (const fee of Object.values(FEE_TIERS)) {
-    const poolAddress = computePoolAddress(
-      tokenIn.address,
-      tokenOut.address,
-      fee
-    );
-    const poolContract = getPoolContract(poolAddress);
-    const zeroForOne = isZeroForOne(tokenIn.address, tokenOut.address);
-    const [d0, d1] = zeroForOne
-      ? [tokenIn.decimals, tokenOut.decimals]
-      : [tokenOut.decimals, tokenIn.decimals];
-    try {
-      const [slot0, liquidity] = await Promise.all([
-        poolContract.slot0(),
-        poolContract.liquidity(),
-      ]);
-      if (liquidity > 0) {
-        const converted = (Number(slot0.sqrtPriceX96) / 2 ** 96) ** 2;
+  const bestQuote = await getBestQuotedRoute({
+    signer: ZeroAddress,
+    tokenIn: tokenIn.address,
+    tokenOut: tokenOut.address,
+    amount: ethers.parseUnits("1", tokenIn.decimals),
+    swapType: SwapType.EXACT_INPUT,
+  });
 
-        const adjusted = (converted * 10 ** d0) / 10 ** d1;
-
-        const price = zeroForOne ? adjusted : 1 / adjusted;
-        return price;
-      }
-    } catch {
-      continue;
-    }
-  }
-  throw new Error("No valid pool found for the token pair");
+  const price = Number.parseFloat(
+    ethers.formatUnits(bestQuote.amountQuoted, tokenOut.decimals)
+  );
+  return price;
 }
