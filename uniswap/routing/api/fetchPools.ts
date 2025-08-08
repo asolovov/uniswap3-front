@@ -1,3 +1,4 @@
+import { graphQLClient } from "@/packages/gql/client";
 import { GraphQLClient } from "graphql-request";
 
 /// INITIAL TYPES ///
@@ -12,7 +13,6 @@ type Route = Pair[];
 
 /// GRAPH-QL ///
 
-const subGraphUrl = "http://52.47.200.90:8000/subgraphs/name/v3-mainnet";
 const poolsReq = `
     query PoolsQuery {
     pools(where: {liquidity_gt: "0"}) {
@@ -22,7 +22,6 @@ const poolsReq = `
     }
   }
 `;
-const client = new GraphQLClient(subGraphUrl);
 
 interface Pool {
   token0: { id: string };
@@ -37,9 +36,12 @@ interface PoolsResponse {
 /// CONFIGS ///
 const MAX_HOPS = 4;
 
-export async function getAllRoutes(tokenIn: string, tokenOut: string): Promise<Route[]> {
+export async function getAllRoutes(
+  tokenIn: string,
+  tokenOut: string
+): Promise<Route[]> {
   /* 1. Load pools and build an adjacency list */
-  const { pools } = await client.request<PoolsResponse>(poolsReq);
+  const { pools } = await graphQLClient.request<PoolsResponse>(poolsReq);
 
   type Edge = { next: string; fee: number };
   const adj: Map<string, Edge[]> = new Map();
@@ -61,7 +63,9 @@ export async function getAllRoutes(tokenIn: string, tokenOut: string): Promise<R
     visited: Set<string>;
   };
 
-  const stack: Frame[] = [{ current: tokenIn, path: [], visited: new Set([tokenIn]) }];
+  const stack: Frame[] = [
+    { current: tokenIn, path: [], visited: new Set([tokenIn]) },
+  ];
 
   while (stack.length) {
     const f = stack.pop()!;
@@ -84,9 +88,9 @@ export async function getAllRoutes(tokenIn: string, tokenOut: string): Promise<R
   /* 3. Deduplication: unique by (tokenIn-tokenOut-fee) sequence */
   const seen = new Set<string>();
   return routes
-    .filter(r => r.length > 0)
-    .filter(r => {
-      const key = r.map(p => `${p.tokenIn}-${p.tokenOut}-${p.fee}`).join("|");
+    .filter((r) => r.length > 0)
+    .filter((r) => {
+      const key = r.map((p) => `${p.tokenIn}-${p.tokenOut}-${p.fee}`).join("|");
       return seen.has(key) ? false : seen.add(key);
     });
 }
